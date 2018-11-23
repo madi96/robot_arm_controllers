@@ -3,7 +3,7 @@ project(robot_arm_controllers)
 
 # Set variables
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -Wall -fPIC")
-set(DEFAULT_ROBOT "pr2")
+set(DEFAULT_ROBOT "PR2")
 set(PRIMITIVE_SRC_FILES src/primitive.cpp)
 set(PUSH_PRIMITIVE_SRC_FILES src/push_primitive.cpp)
 set(LIFT_PRIMITIVE_SRC_FILES src/lift_primitive.cpp)
@@ -11,7 +11,7 @@ set(BUTTON_PRIMITIVE_SRC_FILES src/button_primitive.cpp)
 set(JOYSTICK_PRIMITIVE_SRC_FILES src/joystick_primitive.cpp)
 
 option(ROBOT "Used to specify the targeted robot" ${DEFAULT_ROBOT})
-add_definitions(-DROBOT="${ROBOT}")
+add_definitions(-DROBOT_IS_${ROBOT})
 
 # Find required packages
 find_package(catkin REQUIRED COMPONENTS
@@ -24,11 +24,9 @@ find_package(catkin REQUIRED COMPONENTS
   message_generation
 )
 
-if (${ROBOT} STREQUAL "baxter")
+if (${ROBOT} STREQUAL "BAXTER")
 	find_package(catkin REQUIRED COMPONENTS baxter_core_msgs)
 endif()
-
-
 
 
 ## Generate services in the 'srv' folder
@@ -58,16 +56,16 @@ include_directories(
 install(DIRECTORY include/
         DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION})
 
-add_executable (primitive ${PRIMITIVE_SRC_FILES})
+add_library (primitive ${PRIMITIVE_SRC_FILES})
 target_link_libraries(primitive ${catkin_LIBRARIES})
-#~ add_executable (push_primitive ${PUSH_PRIMITIVE_SRC_FILES})
-#~ target_link_libraries(primitive ${catkin_LIBRARIES})
-#~ add_executable (lift_primitive ${LIFT_PRIMITIVE_SRC_FILES})
-#~ target_link_libraries(primitive ${catkin_LIBRARIES})
-#~ add_executable (button_primitive ${BUTTON_PRIMITIVE_SRC_FILES})
-#~ target_link_libraries(primitive ${catkin_LIBRARIES})
-#~ add_executable (joystick_primitive ${JOYSTICK_PRIMITIVE_SRC_FILES})
-#~ target_link_libraries(primitive ${catkin_LIBRARIES})
+add_executable (push_primitive ${PUSH_PRIMITIVE_SRC_FILES})
+target_link_libraries(push_primitive primitive ${catkin_LIBRARIES})
+add_executable (button_primitive ${BUTTON_PRIMITIVE_SRC_FILES})
+target_link_libraries(button_primitive primitive ${catkin_LIBRARIES})
+add_executable (lift_primitive ${LIFT_PRIMITIVE_SRC_FILES})
+target_link_libraries(lift_primitive primitive ${catkin_LIBRARIES})
+add_executable (joystick_primitive ${JOYSTICK_PRIMITIVE_SRC_FILES})
+target_link_libraries(joystick_primitive primitive ${catkin_LIBRARIES})
 
 
 

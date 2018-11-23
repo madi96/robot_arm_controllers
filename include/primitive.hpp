@@ -28,17 +28,60 @@
 #include <moveit_msgs/PlanningScene.h>
 #include <moveit_msgs/GetPlanningScene.h>
 #include <moveit/robot_state/conversions.h>
-#include <moveit/move_group_interface/move_group.h>
+#include <moveit/move_group_interface/move_group_interface.h>
 #include <moveit/planning_scene_monitor/planning_scene_monitor.h>
 #include <moveit/trajectory_processing/iterative_time_parameterization.h>
 
 #include <tf/transform_broadcaster.h>
 #include <tf2_msgs/TFMessage.h>
 
+#ifdef ROBOT_IS_BAXTER
+#		include <baxter_core_msgs/EndEffectorCommand.h>
+#endif
 
-#include <pr2_controllers_msgs/Pr2GripperCommand.h>
+#ifdef ROBOT_IS_PR2
+#		include <pr2_controllers_msgs/Pr2GripperCommand.h>
+#endif
+
+
 class Primitive {
+	
+    protected:
+		tf::Transform goalToRobotTransform_, approachToRobotTransform_, extendedGoalToRobotTransform_;
+		const std::string group_names_array_[2]  = {"left_arm", "right_arm"};
+        std::vector<double> goal_, goal_normal_;
+        std::string chosen_arm_group_name_;
+        XmlRpc::XmlRpcValue planner_params_;
+        std::shared_ptr<moveit::planning_interface::MoveGroupInterface> chosen_arm_group_, left_arm_group_, right_arm_group_;
+        std::unique_ptr<ros::AsyncSpinner> asyn_spinner_;
+        const double wrist_rot_array_[4] = {0, M_PI/4, M_PI/2, 3*M_PI/4};
+        int rand_rotation_value_index_ = rand() % 4;
+        ros::Publisher  chosen_gripper_pub_, right_gripper_pub_, left_gripper_pub_;
+        robot_state::RobotStatePtr robot_state_;
+		std::string base_frame_, left_gripper_link_name_, chosen_gripper_link_name_, right_gripper_link_name_;
 
+        int right_gripper_id_;
+        int left_gripper_id_;
+
+        std::unique_ptr<ros::ServiceClient> planning_scene_serv_;
+        std::unique_ptr<ros::Publisher> planning_scene_pub_;
+        std::shared_ptr<ros::Subscriber> sub_joint_states_, tf_subscriber_;
+        robot_model::RobotModelPtr robot_model_;
+        std::unique_ptr<ros::ServiceClient> move_baxter_arm_;
+
+
+        geometry_msgs::PoseStamped transformed_approach_frame_, approach_pose_, goal_pose_, transformed_goal_frame_;
+
+        tf::TransformListener tf_listener_;
+
+        bool goal_aquired_ = false;
+        std::vector<double> left_arm_joints_start_positions_,
+            right_arm_joints_start_positions_;
+
+        const double kExtentionDistance = 0.05;
+        const double  kRetractDistance = 0.2;
+        double approach_radius_, x_, y_, z_;
+        
     public :
 
         /**
@@ -76,34 +119,23 @@ class Primitive {
         void connectToRos();
 
 
-        /**
-        @brief Publishes tf transformations between approach/goal frames and the robot frame.
+		 /**
+        @brief Transforms the approach pose and goal pose to the robot's base frame.
 
-        @param .
-        @return .
+        @param  * std::string name of the randomly chosen group
+				* std::vector<double> the normal to the targeted goal
+        @return * .
         */
-        void tfCallback(const tf2_msgs::TFMessageConstPtr& msg);
-
-
-        /**
-        @brief Transforms the approach poses to the robot's base frame.
-
-        @param * std::vector<geometry_msgs::PoseStamped>: input poses
-        	   * std::vector<geometry_msgs::PoseStamped>: output poses
-        @return * bool true if the transformation is a success.
-        */
-        bool transformFrames(std::vector<geometry_msgs::PoseStamped> poses_to_transform,
-                             std::vector<geometry_msgs::PoseStamped>& output_transform,
-                             std::string child_frame_name);
-
+		void publishTransformToRobotFrame(std::vector<double> goal,
+										  std::vector<double> goal_normal);
 
         /**
         @brief Generates random approach poses to the goal.
 
-        @param * int: nbr of approach poses to be generated.
-        @return * std::vector<geometry_msgs::PoseStamped>: vector of the generated poses.
+        @param .
+        @return .
         */
-        std::vector<geometry_msgs::PoseStamped> getRandomApproachFrames(int number_target);
+        void defineApproachAndGoalFrames();
 
 
         /**
@@ -122,7 +154,7 @@ class Primitive {
         @param * Eigen::Vector3d& outout generated point
         @return .
         */
-        void getApproachPoint(Eigen::Vector3d& approach_point);
+        virtual void setApproachPoint(Eigen::Vector3d& approach_point);
 
 
         /**
@@ -137,14 +169,13 @@ class Primitive {
         /**
         @brief Reverses back a trajectory
 
-        @param * moveit::planning_interface::MoveGroup::Plan& The plan to be reversed,
+        @param * moveit::planning_interface::MoveGroupInterface::Plan& The plan to be reversed,
         	   * std::string the arm group name,
-        	   * std::shared_ptr<moveit::planning_interface::MoveGroup> shared pointer to the arm group.
+        	   * std::shared_ptr<moveit::planning_interface::MoveGroupInterface> shared pointer to the arm group.
 
         @return * bool true if the reseversed motion planning and execution have succeeded..
         */
-        bool reverseBackTrajectory(moveit::planning_interface::MoveGroup::Plan& traj_plan, std::string arm_group_name,
-                                   std::shared_ptr<moveit::planning_interface::MoveGroup> arm_group);
+        bool reverseBackTrajectory(moveit::planning_interface::MoveGroupInterface::Plan& traj_plan);
 
 
         /**
@@ -167,43 +198,62 @@ class Primitive {
 
             return  sqrt(std::accumulate(auxiliary.begin(), auxiliary.end(), 0.0));
         }
+         /**
+        @brief Computes the distance between two std::vectors
+
+        @param * bool 
+        @return .
+        */       
+		void manipulateOctomap(bool add_octomap_to_acm);
+		
+		
+        /**
+        @brief plan and execute the required motion
+
+        @param .
+
+        @return * bool true if the execution has succeeded.
+        */
+        virtual void execute();
         ros::NodeHandle nh;
-    private:
-
-        std::vector<double> goal_, goal_normal_;
-        XmlRpc::XmlRpcValue planner_params_;
-        std::shared_ptr<moveit::planning_interface::MoveGroup> left_arm_group_, right_arm_group_;
-        //bool left_arm_in_start_position_,right_arm_in_start_position_;
-        std::unique_ptr<ros::AsyncSpinner> asyn_spinner_;
-        const double wrist_rot_array_[4] = {0, M_PI/4, M_PI/2, 3*M_PI/4};
-        moveit::planning_interface::MoveGroup::Plan _wristRotationPlan;
-        std::map<std::string, double> _turn_variable_values;
-        int rand_rotation_value_index_ = rand() % 4;
-        ros::Publisher  right_gripper_pub_, left_gripper_pub_;
-        robot_state::RobotStatePtr robot_state_;
-
-        int right_gripper_id_;
-        int left_gripper_id_;
-        std::vector<geometry_msgs::PoseStamped> approach_frames_vector_, transformed_approach_frames_vector_,
-            goal_frames_vector_, transformed_goal_frames_vector_;
-
-        std::unique_ptr<ros::ServiceClient> planning_scene_serv_;
-        std::unique_ptr<ros::Publisher> planning_scene_pub_;
-        std::shared_ptr<ros::Subscriber> sub_joint_states_, tf_subscriber_;
-        robot_model::RobotModelPtr robot_model_;
-        std::unique_ptr<ros::ServiceClient> move_baxter_arm_;
 
 
-        geometry_msgs::PoseStamped transformed_approach_frame_, approach_pose_, goal_pose_, transformed_goal_frame_;
+		/**
+        @brief returns a randomly chosen rotation for the wrist chosen from the wrist_rot_array_
 
-        tf::TransformListener tf_listener_;
+        @param .
 
-        bool goal_aquired_ = false;
-        std::vector<double> left_arm_joints_start_positions_,
-            right_arm_joints_start_positions_;
+        @return * double rotation.
+        */						   
+		double generateRandomRotationAngle(){
+			int random_value = rand()%4;
+			// generate random values until we get different value from the previously generated
+			while(random_value == rand_rotation_value_index_){
+				random_value =rand()%4;
+			}
+			rand_rotation_value_index_ =random_value;
 
-        const double kExtentionDistance = 0.05;
-        const double  kRetractDistance = 0.2;
-        double approach_radius_, x_, y_, z_;
+			return wrist_rot_array_[rand_rotation_value_index_];
+		}
+
+		virtual bool planForTrajectory(moveit::planning_interface::MoveGroupInterface::Plan& to_approach_point_plan,
+									   moveit::planning_interface::MoveGroupInterface::Plan& to_goal_plan,
+									   int iteration);
+							    
+							    
+		virtual bool executePlannedMotion(moveit::planning_interface::MoveGroupInterface::Plan to_approach_point_plan,
+										  moveit::planning_interface::MoveGroupInterface::Plan to_goal_plan);
+
+		bool planAndExecute(std::vector<double> goal,	
+						    std::vector<double> goal_normal);	
+		
+		/**
+        @brief rotate the wrist 
+
+        @param .
+
+        @return  bool true if the rotation has succeeded.
+        */	
+		bool rotateWrist(moveit::planning_interface::MoveGroupInterface::Plan wrist_rotation_plan);
 };
 #endif

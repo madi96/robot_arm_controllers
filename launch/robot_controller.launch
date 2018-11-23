@@ -1,7 +1,7 @@
 <launch>
   <param name="X" value="0.70"/>
-  <param name="Y" value="0.20"/>
-  <param name="Z" value="0.7"/>
+  <param name="Y" value="0"/>
+  <param name="Z" value="0.8"/>
 	<arg name="ns" default="robot_arm_controllers"/>
 	<arg name="pkg" default="robot_arm_controllers"/>
 <!--
@@ -10,10 +10,10 @@
 <!--
 	<arg name="exec_name" default="controller_push_primitive"/>
 -->
+	<arg name="exec_name" default="lift_primitive"/>
 <!--
-	<arg name="exec_name" default="controller_grasping_primitive"/>
+	<arg name="exec_name" default="push_primitive"/>
 -->
-	<arg name="exec_name" default="primitive"/>
 <!--
 	<arg name="exec_name" default="controller_lego_demo"/> 
 -->
