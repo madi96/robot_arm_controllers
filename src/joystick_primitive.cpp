@@ -8,7 +8,7 @@
 
 #include <primitive.hpp>
 
-class PushPrimitive: public Primitive {
+class JoystickPrimitive: public Primitive {
     public:
 
         void setApproachPoint(Eigen::Vector3d& approach_point) {
